@@ -1,6 +1,6 @@
 {
   "name": "downgit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Interactive CLI to download files and folders from GitHub repositories by URL",
   "main": "dist/index.js",
   "bin": {
