@@ -1,0 +1,55 @@
+# Auto-detect text files and normalize line endings to LF in the repository.
+# Working-tree line endings follow each user's core.autocrlf setting.
+* text=auto eol=lf
+
+# Source code – always LF
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.js        text eol=lf
+*.jsx       text eol=lf
+*.mjs       text eol=lf
+*.cjs       text eol=lf
+*.json      text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.md        text eol=lf
+*.txt       text eol=lf
+*.html      text eol=lf
+*.css       text eol=lf
+
+# Shell / Unix scripts – must stay LF or they break on Linux/macOS
+*.sh        text eol=lf
+*.bash      text eol=lf
+Makefile    text eol=lf
+
+# Windows-specific scripts – must stay CRLF
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# Dotfiles
+.gitignore       text eol=lf
+.gitattributes   text eol=lf
+.editorconfig    text eol=lf
+.env             text eol=lf
+.env.example     text eol=lf
+
+# Binary files – never touch
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.exe    binary
+*.dll    binary
+*.so     binary
+*.dylib  binary
+*.zip    binary
+*.gz     binary
+*.tgz    binary
+
+# Hide generated and vendored content from GitHub language stats / diffs
+dist/**            linguist-generated=true
+build/**           linguist-generated=true
+package-lock.json  linguist-generated=true -diff
+node_modules/**    linguist-vendored=true
