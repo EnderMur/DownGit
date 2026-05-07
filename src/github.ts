@@ -1,13 +1,6 @@
 import axios, { AxiosError, AxiosInstance } from "axios";
 import { ParsedUrl, RepoEntry } from "./types";
 
-/**
- * Parse various GitHub URL formats:
- *   https://github.com/<owner>/<repo>
- *   https://github.com/<owner>/<repo>/tree/<branch>
- *   https://github.com/<owner>/<repo>/tree/<branch>/<sub/path>
- *   https://github.com/<owner>/<repo>/blob/<branch>/<sub/path/file>
- */
 export function parseGithubUrl(input: string): ParsedUrl {
   let url: URL;
   try {
@@ -71,10 +64,6 @@ export class GithubClient {
     }
   }
 
-  /**
-   * List contents of a directory (or repo root) at the given path.
-   * Returns files and subdirectories at one level (not recursive).
-   */
   async listContents(
     owner: string,
     repo: string,
@@ -92,9 +81,6 @@ export class GithubClient {
     }
   }
 
-  /**
-   * Download a single file's raw content as a Buffer.
-   */
   async downloadFile(downloadUrl: string): Promise<Buffer> {
     try {
       const res = await axios.get<ArrayBuffer>(downloadUrl, {

@@ -9,21 +9,14 @@ interface DownloadOptions {
   repo: string;
   ref: string;
   outputDir: string;
-  /** The path that should be treated as the "root" when computing relative output paths. */
   basePath: string;
-  /** Called once for every file before downloading it. */
   onProgress?: (current: number, total: number, file: string) => void;
 }
 
-/**
- * Download a list of selected entries (files and/or directories).
- * Directories are walked recursively via the GitHub contents API.
- */
 export async function downloadEntries(
   entries: RepoEntry[],
   opts: DownloadOptions
 ): Promise<{ downloaded: number; skipped: number }> {
-  // First, expand directories into their files (recursively).
   const allFiles: RepoEntry[] = [];
   for (const entry of entries) {
     if (entry.type === "file") {
@@ -80,16 +73,6 @@ async function collectFiles(
   return out;
 }
 
-/**
- * Compute the file path relative to the user-selected base.
- *
- * If the user navigated into "src/utils" and selected "src/utils/foo.ts",
- * the resulting file should be saved as "foo.ts" (not "src/utils/foo.ts").
- *
- * If the user selected the directory "src/utils" itself while at root,
- * the file "src/utils/foo.ts" should keep its tail "utils/foo.ts" so the
- * directory structure of the selection is preserved.
- */
 function relativePath(filePath: string, basePath: string): string {
   if (!basePath) return filePath;
   if (filePath === basePath) return path.basename(filePath);

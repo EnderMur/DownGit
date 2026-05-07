@@ -53,10 +53,6 @@ const C = {
   gray: "\x1b[90m",
 };
 
-/**
- * Run an interactive arrow-key selector over a GitHub repository.
- * Returns a flat list of selected entries (files and/or directories).
- */
 export async function runInteractiveSelector(
   opts: SelectorOptions
 ): Promise<RepoEntry[]> {
@@ -114,20 +110,16 @@ export async function runInteractiveSelector(
       return;
     }
     if (entry.type === "dir") {
-      // Drop any descendants that were individually selected.
       for (const key of [...selected.keys()]) {
         if (key.startsWith(entry.path + "/")) selected.delete(key);
       }
     }
-    // If an ancestor is already selected, ignore (the whole ancestor is included).
     if (isAncestorSelected(entry.path)) return;
     selected.set(entry.path, entry);
   }
 
   function visibleItems(): Array<{ kind: "up" } | { kind: "entry"; entry: RepoEntry }> {
     const items: Array<{ kind: "up" } | { kind: "entry"; entry: RepoEntry }> = [];
-    // Show ".." whenever we're not at the repository root, regardless of where
-    // the user's URL pointed. This lets ← work from any depth.
     if (state.currentPath !== "") items.push({ kind: "up" });
     for (const entry of state.entries) items.push({ kind: "entry", entry });
     return items;
@@ -199,7 +191,6 @@ export async function runInteractiveSelector(
     lastRenderedLines = lines.length;
   }
 
-  // --- input handling ---
   return new Promise<RepoEntry[]>((resolve, reject) => {
     if (!process.stdin.isTTY) {
       reject(new Error("Interactive selector requires a TTY (run in a terminal)."));
@@ -303,8 +294,6 @@ export async function runInteractiveSelector(
     };
 
     async function goUp() {
-      // Allow navigation up to the repository root, even above the URL's
-      // initial subPath. The user can always press q to bail.
       if (state.currentPath === "") return;
       const parent = state.currentPath.split("/").slice(0, -1).join("/");
       busy = true;
@@ -316,7 +305,6 @@ export async function runInteractiveSelector(
       onKeypress(str, key).catch(fail);
     });
 
-    // Kick off initial load.
     loadDir(state.currentPath).catch(fail);
   });
 }
@@ -331,15 +319,7 @@ type Action =
   | "cancel"
   | "noop";
 
-/**
- * Map a raw keypress event onto a logical action.
- *
- * We look at both `key.name` (which works on most terminals) and the raw
- * `key.sequence` (a fallback for terminals where readline doesn't decode the
- * arrow-key escape codes — observed on some Windows shells).
- */
 function resolveAction(key: { name?: string; sequence?: string }): Action {
-  // CSI: \x1b[A/B/C/D    SS3: \x1bOA/B/C/D    plain (rare): \x1bA/B/C/D
   const seq = key.sequence ?? "";
   const csi = /^\x1b(\[|O)?([ABCD])$/.exec(seq);
   if (csi) {

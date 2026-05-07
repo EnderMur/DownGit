@@ -117,24 +117,12 @@ function promptUrl(): Promise<string> {
   });
 }
 
-/**
- * Resolve which GitHub token to use, prompting the user the first time the
- * packaged binary is run and persisting the answer to a `.env` file next to
- * the executable. Subsequent runs reuse the saved value silently.
- *
- * Order of preference:
- *   1. --token CLI flag
- *   2. GITHUB_TOKEN env var (also covers the persisted .env file)
- *   3. Interactive prompt (only when packaged + TTY + no .env yet)
- */
 async function ensureToken(cliToken?: string): Promise<string | undefined> {
   if (cliToken) return cliToken;
 
   const fromEnv = process.env.GITHUB_TOKEN;
   if (fromEnv) return fromEnv;
 
-  // Don't pester the user during dev or when stdin isn't interactive.
-  // Once the .env file exists the user already made a choice (token or skip).
   if (!isPackaged() || !process.stdin.isTTY || hasEnvFile()) {
     return undefined;
   }
