@@ -12,7 +12,7 @@ if (debugLogPath) {
   try {
     fs.writeFileSync(debugLogPath, `--- DownGit debug log @ ${new Date().toISOString()} ---\n`);
   } catch {
-    /* ignore */
+    void 0;
   }
 }
 function debugLog(line: string): void {
@@ -20,7 +20,7 @@ function debugLog(line: string): void {
   try {
     fs.appendFileSync(debugLogPath, line + "\n");
   } catch {
-    /* ignore */
+    void 0;
   }
 }
 

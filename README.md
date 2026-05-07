@@ -57,8 +57,10 @@ node dist/index.js https://github.com/octocat/Hello-World
 # Or via the bin shortcut after `npm link`
 downgit https://github.com/octocat/Hello-World
 
-# Pick output directory
-downgit https://github.com/octocat/Hello-World -o ./downloaded
+# By default, files are saved next to the executable in:
+#   <app-dir>/downloads/<owner>/<repo>/
+# Override with -o:
+downgit https://github.com/octocat/Hello-World -o ./somewhere-else
 
 # Pin a specific branch / tag / commit
 downgit https://github.com/octocat/Hello-World -r main

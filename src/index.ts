@@ -11,6 +11,7 @@ import {
   saveToken,
   promptHiddenToken,
   isPackaged,
+  getConfigDir,
 } from "./config";
 
 loadEnv();
@@ -26,7 +27,7 @@ const C = {
 };
 
 interface CliOptions {
-  output: string;
+  output?: string;
   token?: string;
   ref?: string;
   concurrency?: string;
@@ -44,7 +45,10 @@ async function main() {
       "Interactive CLI to browse a GitHub repository and download selected files/folders"
     )
     .argument("[url]", "GitHub repository or folder URL")
-    .option("-o, --output <dir>", "output directory", process.cwd())
+    .option(
+      "-o, --output <dir>",
+      "output directory (default: <app-dir>/downloads/<owner>/<repo>)"
+    )
     .option("-t, --token <token>", "GitHub token (overrides GITHUB_TOKEN env)")
     .option("-r, --ref <branch>", "branch, tag, or commit (overrides URL)")
     .option(
@@ -85,7 +89,9 @@ async function main() {
         return;
       }
 
-      const outputDir = path.resolve(opts.output);
+      const outputDir = opts.output
+        ? path.resolve(opts.output)
+        : path.join(getConfigDir(), "downloads", parsed.owner, parsed.repo);
       const concurrency = resolveConcurrency(opts.concurrency, token);
       console.log(
         `${C.dim}Downloading ${selected.length} item(s) into${C.reset} ${C.bold}${outputDir}${C.reset} ${C.dim}(concurrency: ${concurrency})${C.reset}`
