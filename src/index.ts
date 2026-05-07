@@ -29,7 +29,11 @@ interface CliOptions {
   output: string;
   token?: string;
   ref?: string;
+  concurrency?: string;
 }
+
+const DEFAULT_CONCURRENCY_AUTH = 16;
+const DEFAULT_CONCURRENCY_ANON = 8;
 
 async function main() {
   const program = new Command();
@@ -43,6 +47,10 @@ async function main() {
     .option("-o, --output <dir>", "output directory", process.cwd())
     .option("-t, --token <token>", "GitHub token (overrides GITHUB_TOKEN env)")
     .option("-r, --ref <branch>", "branch, tag, or commit (overrides URL)")
+    .option(
+      "-c, --concurrency <n>",
+      `parallel downloads/listings (default: ${DEFAULT_CONCURRENCY_AUTH} with token, ${DEFAULT_CONCURRENCY_ANON} without)`
+    )
     .version(require("../package.json").version)
     .action(async (urlArg: string | undefined, opts: CliOptions) => {
       const url = urlArg ?? (await promptUrl());
@@ -78,8 +86,9 @@ async function main() {
       }
 
       const outputDir = path.resolve(opts.output);
+      const concurrency = resolveConcurrency(opts.concurrency, token);
       console.log(
-        `${C.dim}Downloading ${selected.length} item(s) into${C.reset} ${C.bold}${outputDir}${C.reset}`
+        `${C.dim}Downloading ${selected.length} item(s) into${C.reset} ${C.bold}${outputDir}${C.reset} ${C.dim}(concurrency: ${concurrency})${C.reset}`
       );
 
       const result = await downloadEntries(selected, {
@@ -89,11 +98,12 @@ async function main() {
         ref,
         outputDir,
         basePath: parsed.subPath,
-        onProgress: (current, total, file) => {
+        concurrency,
+        onProgress: (done, total, file) => {
           process.stdout.write(
-            `\r${C.dim}[${current}/${total}]${C.reset} ${truncateLeft(file, 70)}      `
+            `\r${C.dim}[${done}/${total}]${C.reset} ${truncateLeft(file, 70)}      `
           );
-          if (current === total) process.stdout.write("\n");
+          if (done === total) process.stdout.write("\n");
         },
       });
 
@@ -105,6 +115,18 @@ async function main() {
     });
 
   await program.parseAsync(process.argv);
+}
+
+function resolveConcurrency(flag: string | undefined, token: string | undefined): number {
+  if (flag !== undefined) {
+    const parsed = Number.parseInt(flag, 10);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      console.error(`${C.red}Invalid --concurrency value: ${flag}${C.reset}`);
+      process.exit(1);
+    }
+    return Math.min(parsed, 64);
+  }
+  return token ? DEFAULT_CONCURRENCY_AUTH : DEFAULT_CONCURRENCY_ANON;
 }
 
 function promptUrl(): Promise<string> {

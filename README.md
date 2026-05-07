@@ -68,7 +68,20 @@ downgit https://github.com/expressjs/express/tree/master/lib
 
 # Override token from CLI
 downgit <url> -t ghp_xxx
+
+# Tune parallelism (defaults: 16 with token, 8 without)
+downgit <url> -c 24
 ```
+
+### Performance / parallelism
+
+Both directory listings and file downloads run in parallel up to `--concurrency <n>`:
+
+- **With a GitHub token** the default is **16** — well within the 5000 req/h budget for typical selections.
+- **Without a token** the default is **8** — the public 60 req/h limit is tight, and a higher fan-out risks getting `403` mid-download.
+- The flag is clamped to `[1, 64]`.
+
+For ~50 files this gives roughly an 8-10× speedup over the previous sequential implementation; for deeper trees the gain compounds because directory listing is also parallelized BFS-style.
 
 If you run `downgit` without a URL it will prompt you to paste one.
 

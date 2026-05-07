@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { GithubClient } from "./github";
 import { RepoEntry } from "./types";
+import { pMap } from "./concurrency";
 
 interface DownloadOptions {
   client: GithubClient;
@@ -10,41 +11,46 @@ interface DownloadOptions {
   ref: string;
   outputDir: string;
   basePath: string;
-  onProgress?: (current: number, total: number, file: string) => void;
+  concurrency: number;
+  onProgress?: (done: number, total: number, file: string) => void;
 }
 
 export async function downloadEntries(
   entries: RepoEntry[],
   opts: DownloadOptions
 ): Promise<{ downloaded: number; skipped: number }> {
-  const allFiles: RepoEntry[] = [];
-  for (const entry of entries) {
-    if (entry.type === "file") {
-      allFiles.push(entry);
-    } else {
-      const files = await collectFiles(entry.path, opts);
-      allFiles.push(...files);
-    }
-  }
+  const dirEntries = entries.filter((e) => e.type === "dir");
+  const fileEntries = entries.filter((e) => e.type === "file");
 
+  const expandedFromDirs = await Promise.all(
+    dirEntries.map((dir) => collectFiles(dir.path, opts))
+  );
+  const allFiles = fileEntries.concat(...expandedFromDirs);
+
+  let done = 0;
   let downloaded = 0;
   let skipped = 0;
 
-  for (let i = 0; i < allFiles.length; i++) {
-    const file = allFiles[i];
-    opts.onProgress?.(i + 1, allFiles.length, file.path);
-
-    if (!file.download_url) {
-      skipped++;
-      continue;
-    }
-
-    const buf = await opts.client.downloadFile(file.download_url);
-    const dest = path.join(opts.outputDir, relativePath(file.path, opts.basePath));
-    await fs.mkdir(path.dirname(dest), { recursive: true });
-    await fs.writeFile(dest, buf);
-    downloaded++;
-  }
+  await pMap(
+    allFiles,
+    async (file) => {
+      try {
+        if (!file.download_url) {
+          skipped++;
+          return;
+        }
+        const buf = await opts.client.downloadFile(file.download_url);
+        const dest = path.join(opts.outputDir, relativePath(file.path, opts.basePath));
+        await fs.mkdir(path.dirname(dest), { recursive: true });
+        await fs.writeFile(dest, buf);
+        downloaded++;
+      } finally {
+        done++;
+        opts.onProgress?.(done, allFiles.length, file.path);
+      }
+    },
+    opts.concurrency
+  );
 
   return { downloaded, skipped };
 }
@@ -54,20 +60,23 @@ async function collectFiles(
   opts: DownloadOptions
 ): Promise<RepoEntry[]> {
   const out: RepoEntry[] = [];
-  const queue: string[] = [dirPath];
+  let frontier: string[] = [dirPath];
 
-  while (queue.length) {
-    const current = queue.shift()!;
-    const entries = await opts.client.listContents(
-      opts.owner,
-      opts.repo,
-      current,
-      opts.ref
+  while (frontier.length > 0) {
+    const listings = await pMap(
+      frontier,
+      (current) => opts.client.listContents(opts.owner, opts.repo, current, opts.ref),
+      opts.concurrency
     );
-    for (const e of entries) {
-      if (e.type === "file") out.push(e);
-      else queue.push(e.path);
+
+    const nextFrontier: string[] = [];
+    for (const entries of listings) {
+      for (const e of entries) {
+        if (e.type === "file") out.push(e);
+        else nextFrontier.push(e.path);
+      }
     }
+    frontier = nextFrontier;
   }
 
   return out;
