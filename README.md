@@ -5,7 +5,6 @@ Interactive CLI to browse a GitHub repository and download selected files or fol
 ## Features
 
 - Paste any GitHub URL (`/owner/repo`, `/owner/repo/tree/branch`, `/owner/repo/tree/branch/sub/path`, or a `/blob/...` link)
-- Browse the repo like a file manager — `↑/↓` to move, `Enter` to enter a folder, `Backspace` to go up
 - Multi-select with `Space` (works on both files and whole folders)
 - Press `d` to download everything you've checked
 - Recursive folder downloads via the GitHub Contents API
