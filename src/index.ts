@@ -13,8 +13,22 @@ import {
   isPackaged,
   getConfigDir,
 } from "./config";
+import {
+  fetchLatestRelease,
+  isNewerVersion,
+  pickAssetForPlatform,
+  downloadAsset,
+  applyUpdate,
+  cleanupOldBinary,
+  shouldCheckUpdate,
+  recordUpdateCheck,
+  getReleaseUrl,
+  getUpdateTmpPath,
+  ReleaseInfo,
+} from "./updater";
 
 loadEnv();
+cleanupOldBinary();
 
 const C = {
   reset: "\x1b[0m",
@@ -31,10 +45,17 @@ interface CliOptions {
   token?: string;
   ref?: string;
   concurrency?: string;
+  updateCheck?: boolean;
+}
+
+interface UpdateCommandOptions {
+  check?: boolean;
+  yes?: boolean;
 }
 
 const DEFAULT_CONCURRENCY_AUTH = 16;
 const DEFAULT_CONCURRENCY_ANON = 8;
+const CURRENT_VERSION = require("../package.json").version as string;
 
 async function main() {
   const program = new Command();
@@ -55,8 +76,12 @@ async function main() {
       "-c, --concurrency <n>",
       `parallel downloads/listings (default: ${DEFAULT_CONCURRENCY_AUTH} with token, ${DEFAULT_CONCURRENCY_ANON} without)`
     )
-    .version(require("../package.json").version)
+    .option("--no-update-check", "skip the daily background check for new releases")
+    .version(CURRENT_VERSION)
     .action(async (urlArg: string | undefined, opts: CliOptions) => {
+      const updatePromise =
+        opts.updateCheck === false ? null : startBackgroundUpdateCheck();
+
       const url = urlArg ?? (await promptUrl());
       if (!url) {
         console.error(`${C.red}URL is required.${C.reset}`);
@@ -118,9 +143,150 @@ async function main() {
           result.skipped ? `, ${result.skipped} skipped` : ""
         }.`
       );
+
+      if (updatePromise) await maybePrintUpdateNotice(updatePromise);
+    });
+
+  program
+    .command("update")
+    .description("Check for and install the latest DownGit release")
+    .option("--check", "only check, don't install")
+    .option("-y, --yes", "skip confirmation prompt before installing")
+    .action(async (opts: UpdateCommandOptions) => {
+      await runUpdateCommand(opts);
     });
 
   await program.parseAsync(process.argv);
+}
+
+function startBackgroundUpdateCheck(): Promise<ReleaseInfo | null> | null {
+  if (!shouldCheckUpdate()) return null;
+  return fetchLatestRelease(process.env.GITHUB_TOKEN)
+    .then((release) => {
+      recordUpdateCheck(release?.version);
+      return release;
+    })
+    .catch(() => null);
+}
+
+async function maybePrintUpdateNotice(
+  promise: Promise<ReleaseInfo | null>
+): Promise<void> {
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500));
+  const release = await Promise.race([promise, timeout]);
+  if (!release) return;
+  if (!isNewerVersion(release.version, CURRENT_VERSION)) return;
+
+  console.log(
+    `\n${C.cyan}↑ Update available:${C.reset} ${C.dim}${CURRENT_VERSION} →${C.reset} ${C.bold}${release.version}${C.reset} ${C.dim}· run${C.reset} ${C.bold}downgit update${C.reset} ${C.dim}to install${C.reset}`
+  );
+}
+
+async function runUpdateCommand(opts: UpdateCommandOptions): Promise<void> {
+  if (!isPackaged()) {
+    console.error(
+      `${C.red}Auto-update only works on packaged binaries.${C.reset} ${C.dim}Run via .exe / Linux/macOS binary, not 'npm run dev'.${C.reset}`
+    );
+    process.exit(1);
+  }
+
+  console.log(`${C.dim}Checking ${getReleaseUrl()} ...${C.reset}`);
+
+  const release = await fetchLatestRelease(process.env.GITHUB_TOKEN);
+  recordUpdateCheck(release?.version);
+
+  if (!release) {
+    console.log(`${C.yellow}No releases found yet.${C.reset}`);
+    return;
+  }
+
+  console.log(
+    `Current: ${C.bold}${CURRENT_VERSION}${C.reset}   Latest: ${C.bold}${release.version}${C.reset}   ${C.dim}(${release.tag})${C.reset}`
+  );
+
+  if (!isNewerVersion(release.version, CURRENT_VERSION)) {
+    console.log(`${C.green}✓ You are on the latest version.${C.reset}`);
+    return;
+  }
+
+  if (opts.check) {
+    console.log(
+      `${C.cyan}A newer version is available.${C.reset} ${C.dim}Run${C.reset} ${C.bold}downgit update${C.reset} ${C.dim}to install.${C.reset}`
+    );
+    return;
+  }
+
+  const asset = pickAssetForPlatform(release.assets);
+  if (!asset) {
+    console.error(
+      `${C.red}No matching binary found for ${process.platform}/${process.arch}.${C.reset}`
+    );
+    console.error(`${C.dim}See ${release.htmlUrl} and download manually.${C.reset}`);
+    process.exit(1);
+  }
+
+  if (!opts.yes && process.stdin.isTTY) {
+    const confirmed = await confirm(
+      `Install ${C.bold}${asset.name}${C.reset} (${formatBytes(asset.size)})? [Y/n] `
+    );
+    if (!confirmed) {
+      console.log(`${C.yellow}Cancelled.${C.reset}`);
+      return;
+    }
+  }
+
+  const tmpPath = getUpdateTmpPath();
+  try {
+    let lastReported = 0;
+    await downloadAsset(asset.browser_download_url, tmpPath, (downloaded, total) => {
+      const now = Date.now();
+      if (now - lastReported < 100 && downloaded !== total) return;
+      lastReported = now;
+      const pct = total ? ((downloaded / total) * 100).toFixed(0).padStart(3) : "  ?";
+      const sizes = total
+        ? `${formatBytes(downloaded)}/${formatBytes(total)}`
+        : formatBytes(downloaded);
+      process.stdout.write(`\r${C.dim}Downloading${C.reset} ${pct}%  ${sizes}      `);
+    });
+    process.stdout.write("\n");
+
+    applyUpdate(tmpPath);
+
+    console.log(
+      `${C.green}✓ Updated to ${release.version}.${C.reset} ${C.dim}Re-run downgit to use the new version.${C.reset}`
+    );
+  } catch (err) {
+    try {
+      const fs = require("node:fs");
+      if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+    } catch {
+      void 0;
+    }
+    throw err;
+  }
+}
+
+function confirm(prompt: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(prompt, (answer) => {
+      rl.close();
+      const a = answer.trim().toLowerCase();
+      resolve(a === "" || a === "y" || a === "yes");
+    });
+  });
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let i = 0;
+  let n = bytes;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i++;
+  }
+  return `${n.toFixed(n >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
 function resolveConcurrency(flag: string | undefined, token: string | undefined): number {

@@ -5,3 +5,5 @@ build/
 *.log
 .DS_Store
 *.txt
+.downgit-state.json
+*.exe.old
